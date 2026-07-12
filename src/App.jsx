@@ -517,6 +517,7 @@ export default function App() {
 
 function Dashboard({ stats, platformName, resellerName, isOwner }) {
   const alerts = [...stats.expired, ...stats.soon];
+  const [renewalProfile, setRenewalProfile] = useState(null);
   return (
     <div>
       <h1 style={{ fontFamily: "Sora, sans-serif", fontSize: 24, fontWeight: 800, margin: "0 0 4px 0" }}>Resumen general</h1>
@@ -538,7 +539,7 @@ function Dashboard({ stats, platformName, resellerName, isOwner }) {
         {alerts.length === 0 && <div style={{ color: C.muted, fontSize: 13.5 }}>No hay perfiles por vencer en los próximos días.</div>}
         {alerts.length > 0 && (
           <table>
-            <thead><tr><th>Cliente</th><th>Correo</th><th>Plataforma</th><th>Revendedor</th><th>Corte</th><th>Estado</th></tr></thead>
+            <thead><tr><th>Cliente</th><th>Correo</th><th>Plataforma</th><th>Revendedor</th><th>Corte</th><th>Estado</th><th></th></tr></thead>
             <tbody>
               {alerts.sort((a, b) => daysUntil(a.cutDate) - daysUntil(b.cutDate)).map((p) => {
                 const st = statusFor(p.cutDate, p.cancelled);
@@ -550,6 +551,15 @@ function Dashboard({ stats, platformName, resellerName, isOwner }) {
                     <td>{resellerName(p.resellerId)}</td>
                     <td style={{ fontFamily: "JetBrains Mono, monospace" }}>{fmtDate(p.cutDate)}</td>
                     <td><span style={{ color: st.color, fontWeight: 600 }}>{st.label}</span></td>
+                    <td>
+                      <button
+                        style={{ ...btnGhost, padding: "5px 10px", fontSize: 11.5 }}
+                        onClick={() => setRenewalProfile(p)}
+                        title="Ver mensaje de aviso"
+                      >
+                        <Send size={12} />Ver aviso
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
@@ -557,7 +567,40 @@ function Dashboard({ stats, platformName, resellerName, isOwner }) {
           </table>
         )}
       </div>
+
+      <RenewalModal data={renewalProfile} onClose={() => setRenewalProfile(null)} />
     </div>
+  );
+}
+
+function RenewalModal({ data, onClose }) {
+  const [copied, setCopied] = useState(false);
+  if (!data) return null;
+  const text =
+    `Nombre: ${data.clientName}\n` +
+    `Correo: ${data.contactEmail || "—"}\n` +
+    `Fecha de corte: ${fmtDate(data.cutDate)}\n\n` +
+    `Estimado usuario, le informamos que este servicio está próximo a vencer. Por favor infórmenos si desea renovar.`;
+  return (
+    <Modal open={!!data} onClose={onClose} title="Mensaje de aviso de vencimiento">
+      <div style={{ background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, fontFamily: "JetBrains Mono, monospace", fontSize: 13, lineHeight: 1.8, whiteSpace: "pre-wrap" }}>
+        {text}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+        <button
+          style={btnPrimary}
+          onClick={() => {
+            navigator.clipboard?.writeText(text)
+              .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); })
+              .catch(() => alert("No se pudo copiar automáticamente. Selecciona el texto de arriba y cópialo manualmente (Ctrl+C)."));
+          }}
+        >
+          {copied ? <Check size={15} /> : <Copy size={15} />}
+          {copied ? "Copiado" : "Copiar mensaje"}
+        </button>
+        <button style={btnGhost} onClick={onClose}>Cerrar</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -582,9 +625,9 @@ function PlatformsTab({ platforms, profiles, onAdd, onEdit, onDelete }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
         {sorted.map((p) => {
           const used = profiles.filter((pr) => pr.platformId === p.id && !pr.cancelled && pr.type !== "extra").length;
-          const usedExtra = profiles.filter((pr) => pr.platformId === p.id && !pr.cancelled && pr.type === "extra").length;
           const cap = p.capacity || 5;
-          const extraCap = p.extraCapacity || 0;
+          const extraEmails = p.extraEmails || [];
+          const extraProfiles = profiles.filter((pr) => pr.platformId === p.id && !pr.cancelled && pr.type === "extra");
           const expDays = daysUntil(p.expDate);
           const expColor = expDays < 0 ? C.danger : expDays <= 3 ? C.warn : C.muted;
           return (
@@ -593,7 +636,7 @@ function PlatformsTab({ platforms, profiles, onAdd, onEdit, onDelete }) {
                 <div>
                   <div style={{ fontFamily: "Sora, sans-serif", fontWeight: 700, fontSize: 15 }}>{p.name}</div>
                   <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>
-                    {used}/{cap} estándar{extraCap > 0 ? ` · ${usedExtra}/${extraCap} extra` : ""}
+                    {used}/{cap} estándar{extraEmails.length > 0 ? ` · ${extraProfiles.length}/${extraEmails.length} extra` : ""}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 2 }}>
@@ -610,9 +653,24 @@ function PlatformsTab({ platforms, profiles, onAdd, onEdit, onDelete }) {
               <div style={{ marginTop: 10, height: 6, borderRadius: 4, background: C.border, overflow: "hidden" }}>
                 <div style={{ width: `${Math.min(100, (used / cap) * 100)}%`, height: "100%", background: used >= cap ? C.danger : C.accent2 }} />
               </div>
-              {extraCap > 0 && (
-                <div style={{ marginTop: 6, height: 6, borderRadius: 4, background: C.border, overflow: "hidden" }}>
-                  <div style={{ width: `${Math.min(100, (usedExtra / extraCap) * 100)}%`, height: "100%", background: usedExtra >= extraCap ? C.danger : C.accent }} />
+              {extraEmails.length > 0 && (
+                <div style={{ marginTop: 10, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+                  <div style={{ fontSize: 11, color: C.muted, marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.3 }}>Correos extra</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    {extraEmails.map((em, i) => {
+                      const owner = extraProfiles.find((pr) => pr.extraSlotEmail === em);
+                      return (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12 }}>
+                          <span style={{ fontFamily: "JetBrains Mono, monospace", color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 150 }}>{em}</span>
+                          {owner ? (
+                            <span style={{ color: C.accent, fontSize: 11 }}>{owner.clientName}</span>
+                          ) : (
+                            <span style={{ color: C.accent2, fontSize: 11 }}>Libre</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
@@ -659,9 +717,10 @@ function ProfilesTab({ profiles, platforms, resellers, search, setSearch, platfo
                   {platformName(p.platformId)}{p.type === "extra" ? " · Extra" : ""} · {resellerName(p.resellerId)}
                 </div>
                 <div style={{ fontSize: 12.5, display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ color: C.muted }}>Correo de contacto</span><span style={{ display: "flex", gap: 4, alignItems: "center" }}>{p.contactEmail || "—"}{p.contactEmail && <CopyBtn value={p.contactEmail} />}</span></div>
                   {p.type === "extra" ? (
                     <>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ color: C.muted }}>Correo</span><span style={{ display: "flex", gap: 4, alignItems: "center" }}>{p.clientEmail}<CopyBtn value={p.clientEmail} /></span></div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ color: C.muted }}>Correo del perfil</span><span style={{ display: "flex", gap: 4, alignItems: "center" }}>{p.clientEmail}<CopyBtn value={p.clientEmail} /></span></div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ color: C.muted }}>Contraseña</span><SecretText value={p.clientPassword} /></div>
                     </>
                   ) : (
@@ -773,7 +832,8 @@ function PlatformModal({ data, onClose, onSave }) {
   const [name, setName] = useState(""); const [custom, setCustom] = useState("");
   const [email, setEmail] = useState(""); const [password, setPassword] = useState("");
   const [expDate, setExpDate] = useState(todayISO()); const [cost, setCost] = useState("");
-  const [capacity, setCapacity] = useState(5); const [extraCapacity, setExtraCapacity] = useState(0);
+  const [capacity, setCapacity] = useState(5); const [extraEmails, setExtraEmails] = useState([]);
+  const [newExtraEmail, setNewExtraEmail] = useState("");
 
   useEffect(() => {
     if (data) {
@@ -782,7 +842,9 @@ function PlatformModal({ data, onClose, onSave }) {
       setCustom(data.id && !known ? data.name || "" : "");
       setEmail(data.email || ""); setPassword(data.password || "");
       setExpDate(data.expDate || todayISO()); setCost(data.cost ?? "");
-      setCapacity(data.capacity ?? 5); setExtraCapacity(data.extraCapacity ?? 0);
+      setCapacity(data.capacity ?? 5);
+      setExtraEmails(data.extraEmails || []);
+      setNewExtraEmail("");
     }
   }, [data]);
 
@@ -803,18 +865,59 @@ function PlatformModal({ data, onClose, onSave }) {
       <Field label="Fecha de vencimiento"><input type="date" style={inputStyle} value={expDate} onChange={(e) => setExpDate(e.target.value)} /></Field>
       <Field label="Costo mensual (a proveedor)"><input type="number" style={inputStyle} value={cost} onChange={(e) => setCost(e.target.value)} /></Field>
       <Field label="Capacidad de perfiles estándar"><input type="number" style={inputStyle} value={capacity} onChange={(e) => setCapacity(e.target.value)} /></Field>
-      <Field label="Perfiles extra con correo propio (ej. Netflix, 0 si no aplica)">
-        <input type="number" style={inputStyle} value={extraCapacity} onChange={(e) => setExtraCapacity(e.target.value)} />
-        <div style={{ fontSize: 11.5, color: C.muted, marginTop: 5 }}>
-          Se venden por aparte pero su costo ya está incluido en el costo mensual de esta cuenta.
+
+      <Field label="Correos de perfiles extra (ej. Netflix — uno por cada cupo extra)">
+        <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 8 }}>
+          Se venden por aparte, pero su costo ya está incluido en el costo mensual de esta cuenta. Agrega un correo por cada cupo extra que tenga la plataforma.
+        </div>
+        {extraEmails.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
+            {extraEmails.map((em, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "6px 10px" }}>
+                <span style={{ flex: 1, fontSize: 12.5, fontFamily: "JetBrains Mono, monospace" }}>{em}</span>
+                <button
+                  style={iconBtnStyle}
+                  onClick={() => setExtraEmails(extraEmails.filter((_, idx) => idx !== i))}
+                  title="Quitar"
+                >
+                  <Trash2 size={13} color={C.danger} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 6 }}>
+          <input
+            style={{ ...inputStyle, marginTop: 0 }} value={newExtraEmail}
+            placeholder="correoextra@ejemplo.com"
+            onChange={(e) => setNewExtraEmail(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && newExtraEmail.trim()) {
+                setExtraEmails([...extraEmails, newExtraEmail.trim()]);
+                setNewExtraEmail("");
+              }
+            }}
+          />
+          <button
+            style={{ ...btnGhost, padding: "9px 12px" }}
+            onClick={() => {
+              if (newExtraEmail.trim()) {
+                setExtraEmails([...extraEmails, newExtraEmail.trim()]);
+                setNewExtraEmail("");
+              }
+            }}
+          >
+            <Plus size={14} />
+          </button>
         </div>
       </Field>
+
       <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
         <button
           style={btnPrimary}
           onClick={() => {
             if (!finalName || !email) { alert("Nombre y correo son obligatorios."); return; }
-            onSave({ ...data, name: finalName, email, password, expDate, cost: Number(cost) || 0, capacity: Number(capacity) || 5, extraCapacity: Number(extraCapacity) || 0 });
+            onSave({ ...data, name: finalName, email, password, expDate, cost: Number(cost) || 0, capacity: Number(capacity) || 5, extraEmails });
           }}
         >Guardar</button>
         <button style={btnGhost} onClick={onClose}>Cancelar</button>
@@ -826,7 +929,7 @@ function PlatformModal({ data, onClose, onSave }) {
 function ProfileModal({ data, platforms, resellers, profiles, onClose, onSave }) {
   const [platformId, setPlatformId] = useState(""); const [clientName, setClientName] = useState("");
   const [type, setType] = useState("standard");
-  const [pin, setPin] = useState(""); const [clientEmail, setClientEmail] = useState(""); const [clientPassword, setClientPassword] = useState("");
+  const [pin, setPin] = useState(""); const [extraSlotEmail, setExtraSlotEmail] = useState(""); const [clientPassword, setClientPassword] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [startDate, setStartDate] = useState(todayISO());
   const [cutDate, setCutDate] = useState(addDays(todayISO(), 30)); const [price, setPrice] = useState("");
@@ -836,7 +939,7 @@ function ProfileModal({ data, platforms, resellers, profiles, onClose, onSave })
     if (data) {
       setPlatformId(data.platformId || ""); setClientName(data.clientName || "");
       setType(data.type || "standard");
-      setPin(data.pin || ""); setClientEmail(data.clientEmail || ""); setClientPassword(data.clientPassword || "");
+      setPin(data.pin || ""); setExtraSlotEmail(data.extraSlotEmail || data.clientEmail || ""); setClientPassword(data.clientPassword || "");
       setContactEmail(data.contactEmail || "");
       setStartDate(data.startDate || todayISO());
       setCutDate(data.cutDate || addDays(todayISO(), 30)); setPrice(data.price ?? "");
@@ -848,9 +951,13 @@ function ProfileModal({ data, platforms, resellers, profiles, onClose, onSave })
 
   const withFree = (platforms || []).map((p) => {
     const usedStd = (profiles || []).filter((pr) => pr.platformId === p.id && !pr.cancelled && pr.type !== "extra" && pr.id !== data.id).length;
-    const usedExtra = (profiles || []).filter((pr) => pr.platformId === p.id && !pr.cancelled && pr.type === "extra" && pr.id !== data.id).length;
-    const cap = p.capacity || 5; const extraCap = p.extraCapacity || 0;
-    return { ...p, freeStd: cap - usedStd, freeExtra: extraCap - usedExtra, extraCap };
+    const extraEmails = p.extraEmails || [];
+    const usedExtraEmails = (profiles || [])
+      .filter((pr) => pr.platformId === p.id && !pr.cancelled && pr.type === "extra" && pr.id !== data.id)
+      .map((pr) => pr.extraSlotEmail);
+    const availableExtraEmails = extraEmails.filter((em) => !usedExtraEmails.includes(em));
+    const cap = p.capacity || 5;
+    return { ...p, freeStd: cap - usedStd, extraEmails, availableExtraEmails, freeExtra: availableExtraEmails.length };
   });
 
   const platformOptions = withFree.filter((p) => p.freeStd > 0 || p.freeExtra > 0 || p.id === data.platformId);
@@ -860,36 +967,41 @@ function ProfileModal({ data, platforms, resellers, profiles, onClose, onSave })
   const typeOptions = [];
   if (selected) {
     if (selected.freeStd > 0 || (data.id && data.type !== "extra" && data.platformId === platformId)) typeOptions.push("standard");
-    if (selected.extraCap > 0 && (selected.freeExtra > 0 || (data.id && data.type === "extra" && data.platformId === platformId))) typeOptions.push("extra");
+    if (selected.extraEmails.length > 0 && (selected.freeExtra > 0 || (data.id && data.type === "extra" && data.platformId === platformId))) typeOptions.push("extra");
   }
+
+  // Correos extra que se pueden elegir: los libres, más el que ya tenía este perfil (si se está editando)
+  const selectableExtraEmails = selected
+    ? [...selected.availableExtraEmails, ...(data.extraSlotEmail && !selected.availableExtraEmails.includes(data.extraSlotEmail) ? [data.extraSlotEmail] : [])]
+    : [];
 
   return (
     <Modal open={!!data} onClose={onClose} title={data.id ? "Editar perfil" : "Nuevo perfil"}>
       <Field label="Plataforma (solo se muestran las que tienen cupos libres)">
-        <select value={platformId} onChange={(e) => { setPlatformId(e.target.value); setType("standard"); }}>
+        <select value={platformId} onChange={(e) => { setPlatformId(e.target.value); setType("standard"); setExtraSlotEmail(""); }}>
           <option value="">Selecciona...</option>
           {platformOptions.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name} · {p.email} — {p.freeStd > 0 ? `${p.freeStd} estándar libre${p.freeStd === 1 ? "" : "s"}` : "sin cupo estándar"}
-              {p.extraCap > 0 ? ` · ${p.freeExtra} extra libre${p.freeExtra === 1 ? "" : "s"}` : ""}
+              {p.extraEmails.length > 0 ? ` · ${p.freeExtra} extra libre${p.freeExtra === 1 ? "" : "s"}` : ""}
             </option>
           ))}
         </select>
         {platformOptions.length === 0 && (
           <div style={{ fontSize: 12, color: C.warn, marginTop: 6 }}>No hay plataformas con cupos libres. Agrega una nueva plataforma o amplía la capacidad de una existente.</div>
         )}
-        {platformId && (
+        {platformId && type === "standard" && (
           <div style={{ fontSize: 12, color: C.accent2, marginTop: 6 }}>
             Se agregará en el correo: <strong>{platforms.find((p) => p.id === platformId)?.email}</strong>
           </div>
         )}
       </Field>
 
-      {selected && selected.extraCap > 0 && (
+      {selected && selected.extraEmails.length > 0 && (
         <Field label="Tipo de perfil">
-          <select value={type} onChange={(e) => setType(e.target.value)}>
+          <select value={type} onChange={(e) => { setType(e.target.value); setExtraSlotEmail(""); }}>
             {typeOptions.includes("standard") && <option value="standard">Estándar (dentro de la cuenta)</option>}
-            {typeOptions.includes("extra") && <option value="extra">Extra (correo y contraseña propios)</option>}
+            {typeOptions.includes("extra") && <option value="extra">Extra (correo propio vinculado)</option>}
           </select>
         </Field>
       )}
@@ -899,8 +1011,13 @@ function ProfileModal({ data, platforms, resellers, profiles, onClose, onSave })
 
       {type === "extra" ? (
         <>
-          <Field label="Correo del perfil extra (propio del cliente)"><input style={inputStyle} value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} /></Field>
-          <Field label="Contraseña del perfil extra"><input style={inputStyle} value={clientPassword} onChange={(e) => setClientPassword(e.target.value)} /></Field>
+          <Field label="Correo extra al que queda vinculado">
+            <select value={extraSlotEmail} onChange={(e) => setExtraSlotEmail(e.target.value)}>
+              <option value="">Selecciona un correo extra...</option>
+              {selectableExtraEmails.map((em) => <option key={em} value={em}>{em}</option>)}
+            </select>
+          </Field>
+          <Field label="Contraseña de ese correo extra"><input style={inputStyle} value={clientPassword} onChange={(e) => setClientPassword(e.target.value)} /></Field>
         </>
       ) : (
         <Field label="PIN del cliente (4 dígitos)">
@@ -929,11 +1046,12 @@ function ProfileModal({ data, platforms, resellers, profiles, onClose, onSave })
           onClick={() => {
             if (!platformId || !clientName) { alert("Plataforma y nombre del cliente son obligatorios."); return; }
             if (type === "standard" && pin && !/^\d{4}$/.test(pin)) { alert("El PIN debe tener exactamente 4 dígitos numéricos."); return; }
-            if (type === "extra" && (!clientEmail || !clientPassword)) { alert("El perfil extra necesita correo y contraseña propios."); return; }
+            if (type === "extra" && (!extraSlotEmail || !clientPassword)) { alert("Elige el correo extra y escribe su contraseña."); return; }
             onSave({
               ...data, platformId, clientName, type, contactEmail,
               pin: type === "standard" ? pin : "",
-              clientEmail: type === "extra" ? clientEmail : "",
+              extraSlotEmail: type === "extra" ? extraSlotEmail : "",
+              clientEmail: type === "extra" ? extraSlotEmail : "",
               clientPassword: type === "extra" ? clientPassword : "",
               startDate, cutDate, price: Number(price) || 0, resellerId: resellerId || null,
             });
