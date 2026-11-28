@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { Inicio, Inventario, Ventas } from './Pantallas'
+import { Gastos } from './Gastos'
+import { Estadisticas } from './Estadisticas'
 import { inicioMes } from './Utilidades'
 import './Estilos.css'
+import './EstilosExtra.css'
 
 function Marca({ grande }) {
   return (
@@ -103,9 +106,11 @@ function NuevaClave({ onListo }) {
 }
 
 const MENU = [
-  ['inicio', 'Inicio', 'M3 11l9-7 9 7v9a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z'],
-  ['inv', 'Inventario', 'M3 7l9-4 9 4-9 4-9-4zM3 7v10l9 4 9-4V7'],
-  ['ven', 'Ventas', 'M4 4h16v16H4zM8 9h8M8 13h8M8 17h5'],
+  ['inicio', 'Inicio', 'Inicio', 'M3 11l9-7 9 7v9a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z'],
+  ['inv', 'Inventario', 'Inventario', 'M3 7l9-4 9 4-9 4-9-4zM3 7v10l9 4 9-4V7'],
+  ['ven', 'Ventas', 'Ventas', 'M4 4h16v16H4zM8 9h8M8 13h8M8 17h5'],
+  ['gas', 'Gastos', 'Gastos', 'M3 6h18a1 1 0 011 1v11a1 1 0 01-1 1H3a1 1 0 01-1-1V7a1 1 0 011-1zM2 10h20M6 15h4'],
+  ['est', 'Estadísticas', 'Números', 'M4 20V10M10 20V4M16 20v-7M22 20H2'],
 ]
 
 function Panel() {
@@ -135,6 +140,14 @@ function Panel() {
     cargar()
   }, [cargar])
 
+  let pantalla
+  if (cargando) pantalla = <p>Cargando…</p>
+  else if (vista === 'inicio') pantalla = <Inicio productos={productos} ventas={ventas} recargar={cargar} />
+  else if (vista === 'inv') pantalla = <Inventario productos={productos} ventas={ventas} recargar={cargar} />
+  else if (vista === 'ven') pantalla = <Ventas ventas={ventas} />
+  else if (vista === 'gas') pantalla = <Gastos />
+  else pantalla = <Estadisticas productos={productos} />
+
   return (
     <div>
       <header className="barra">
@@ -145,7 +158,7 @@ function Panel() {
         </div>
       </header>
       <nav className="menu">
-        {MENU.map(([id, nombre, d]) => (
+        {MENU.map(([id, largo, corto, d]) => (
           <button
             key={id}
             className={vista === id ? 'act' : ''}
@@ -157,22 +170,15 @@ function Panel() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d={d} />
             </svg>
-            <span>{nombre}</span>
+            <span className="lg">{largo}</span>
+            <span className="sh">{corto}</span>
           </button>
         ))}
       </nav>
       <main className="contenido">
         {error && <p className="error">No se pudieron cargar los datos: {error}</p>}
-        {cargando ? (
-          <p>Cargando…</p>
-        ) : vista === 'inicio' ? (
-          <Inicio productos={productos} ventas={ventas} recargar={cargar} />
-        ) : vista === 'inv' ? (
-          <Inventario productos={productos} ventas={ventas} recargar={cargar} />
-        ) : (
-          <Ventas ventas={ventas} />
-        )}
+        {pantalla}
       </main>
     </div>
   )
-                                                                                           }
+            }
